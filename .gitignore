@@ -1,0 +1,27 @@
+# Ambiente virtual
+venv/
+env/
+.env
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Banco de dados
+data/setpiece.db
+
+# Parquet (gerado pelo ETL do Carlos)
+data/set_pieces.parquet
+data/*.parquet
+
+# Streamlit
+.streamlit/
+
+# IDEs
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
