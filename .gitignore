@@ -11,9 +11,8 @@ __pycache__/
 # Banco de dados
 data/setpiece.db
 
-# Parquet (gerado pelo ETL do Carlos)
-data/set_pieces.parquet
-data/*.parquet
+# Database
+setpiece.db
 
 # Streamlit
 .streamlit/
