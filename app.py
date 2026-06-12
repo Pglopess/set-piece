@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from metrics import (
     metricas_por_tipo, metricas_por_faixa_minuto, metricas_por_time,
     coordenadas_bp, coordenadas_chutes, lista_times, lista_competicoes,
-    lista_temporadas, evolucao_temporada
+    lista_temporadas, evolucao_temporada, padroes_por_time
 )
 
 st.set_page_config(
@@ -74,6 +74,7 @@ with st.sidebar:
         "Por Faixa de Minuto",
         "Ranking de Times",
         "Evolucao por Temporada",
+        "Analise de Padroes",
     ])
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -302,3 +303,81 @@ elif pagina == "Evolucao por Temporada":
         plt.xticks(rotation=45, ha='right', color='white')
         plt.tight_layout()
         st.pyplot(fig); plt.close()
+
+# ── Analise de Padroes ────────────────────────────────────────────────────────
+elif pagina == "Analise de Padroes":
+    st.header("Analise de Padroes - IRP")
+    st.caption("Identifica clusters de finalizacao geradas em bolas paradas, revelando jogadas ensaiadas recorrentes.")
+
+    if time_id is None:
+        st.warning("Selecione um time no filtro para visualizar os padroes.")
+    else:
+        k = st.slider("Numero de padroes (clusters)", 2, 6, 4)
+
+        try:
+            df_pts, resumo = padroes_por_time(time_id=time_id, tipo=tipo_id, k=k)
+        except Exception as e:
+            st.error(f"Dados insuficientes para o filtro selecionado: {e}")
+            st.stop()
+
+        if df_pts.empty:
+            st.warning("Sem finalizacoes registradas para esse time com os filtros atuais.")
+        else:
+            CORES_CLUSTER = ['#4e9af1','#f4a031','#4ecf7a','#e05c5c','#b07cf4','#f4d03f']
+
+            # Mapa de campo com clusters
+            pitch = VerticalPitch(pitch_type='statsbomb', half=True,
+                                  pitch_color='#1a1a2e', line_color='#aaaaaa')
+            fig, ax = pitch.draw(figsize=(7, 8))
+            fig.patch.set_facecolor('#0e1117')
+
+            for cl in sorted(df_pts['cluster'].unique()):
+                sub = df_pts[df_pts['cluster'] == cl]
+                cor = CORES_CLUSTER[cl % len(CORES_CLUSTER)]
+                gols_sub = sub[sub['goals_scored'] == 1]
+                outros_sub = sub[sub['goals_scored'] == 0]
+
+                pitch.scatter(outros_sub['shot_x'], outros_sub['shot_y'], ax=ax,
+                             s=60, color=cor, alpha=0.55, edgecolors='white', linewidths=0.3,
+                             label=f"Padrao {cl+1}")
+                if len(gols_sub):
+                    pitch.scatter(gols_sub['shot_x'], gols_sub['shot_y'], ax=ax,
+                                 s=140, color=cor, alpha=1.0, edgecolors='white',
+                                 linewidths=0.8, marker='*')
+
+            ax.legend(facecolor='#1e2130', labelcolor='white', loc='lower center',
+                     fontsize=9, ncol=k)
+            ax.set_title(f"Padroes de Finalizacao - {time_sel} | {tipo_sel}",
+                        color='white', fontsize=13, pad=10)
+            st.pyplot(fig); plt.close()
+            st.caption("Estrelas = gols. Cada cor representa um padrao recorrente de finalizacao.")
+
+            st.divider()
+            st.subheader("Resumo por Padrao")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                fig, ax = dark_fig(5, 3.5)
+                cores = [CORES_CLUSTER[i % len(CORES_CLUSTER)] for i in resumo['cluster']]
+                labels = [f"Padrao {i+1}" for i in resumo['cluster']]
+                bars = ax.bar(labels, resumo['finalizacoes'], color=cores)
+                ax.bar_label(bars, padding=3, color='white', fontsize=9)
+                ax.set_title("Finalizacoes por Padrao", color='white', fontsize=11)
+                ax.tick_params(colors='white')
+                plt.tight_layout()
+                st.pyplot(fig); plt.close()
+
+            with col2:
+                fig, ax = dark_fig(5, 3.5)
+                bars = ax.bar(labels, resumo['TC'], color=cores)
+                ax.bar_label(bars, fmt='%.1f%%', padding=3, color='white', fontsize=9)
+                ax.set_title("Taxa de Conversao por Padrao (%)", color='white', fontsize=11)
+                ax.tick_params(colors='white')
+                plt.tight_layout()
+                st.pyplot(fig); plt.close()
+
+            tabela = resumo[['cluster','finalizacoes','gols','TC','xg_medio','pct_total']].copy()
+            tabela['cluster'] = tabela['cluster'].apply(lambda x: f"Padrao {x+1}")
+            tabela.columns = ['Padrao','Finalizacoes','Gols','TC (%)','xG Medio','% do Total']
+            st.dataframe(tabela, use_container_width=True, hide_index=True)

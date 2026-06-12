@@ -204,3 +204,57 @@ if __name__ == "__main__":
     print(metricas_por_time(n=8).to_string(index=False))
     print("\n=== Por faixa de minuto ===")
     print(metricas_por_faixa_minuto().to_string(index=False))
+
+
+# ── Análise de Padrões (IRP) ──────────────────────────────────────────────────
+
+def padroes_por_time(time_id, tipo=None, k=4):
+    """
+    Clusteriza as finalizações geradas por um time em bolas paradas.
+    Retorna o DataFrame com coluna 'cluster' e o resumo por cluster.
+    """
+    from sklearn.cluster import KMeans
+
+    conn = get_conn()
+    filtros = ["bp.id_time = ?", "e.shot_x IS NOT NULL"]
+    params  = [time_id]
+    if tipo:
+        filtros.append("bp.tipo = ?")
+        params.append(tipo)
+
+    where = "WHERE " + " AND ".join(filtros)
+
+    df = pd.read_sql(f"""
+        SELECT
+            bp.coord_x AS origem_x,
+            bp.coord_y AS origem_y,
+            e.shot_x,
+            e.shot_y,
+            e.goals_scored,
+            e.xg_sum,
+            bp.tipo
+        FROM bolas_paradas bp
+        JOIN eventos e ON e.id_bp = bp.id_bp
+        {where}
+    """, conn, params=params)
+    conn.close()
+
+    if len(df) < k * 3:
+        k = max(2, len(df) // 3)
+
+    coords = df[['shot_x', 'shot_y']].values
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    df['cluster'] = km.fit_predict(coords)
+
+    resumo = df.groupby('cluster').agg(
+        finalizacoes=('cluster', 'count'),
+        gols=('goals_scored', 'sum'),
+        xg_medio=('xg_sum', 'mean'),
+        shot_x_medio=('shot_x', 'mean'),
+        shot_y_medio=('shot_y', 'mean'),
+    ).round(3).reset_index()
+
+    resumo['TC'] = (resumo['gols'] / resumo['finalizacoes'] * 100).round(1)
+    resumo['pct_total'] = (resumo['finalizacoes'] / resumo['finalizacoes'].sum() * 100).round(1)
+
+    return df, resumo
