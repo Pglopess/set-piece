@@ -1,7 +1,7 @@
 """
-ETL: set_pieces.parquet -> SQLite
-Lê o parquet gerado pelo Carlos e popula o banco seguindo
-o schema relacional do relatório SetPiece Analytics.
+ETL do SetPiece Analytics
+Lê o arquivo parquet gerado pelo grupo e popula o banco SQLite
+seguindo o modelo relacional definido no relatório.
 """
 
 import sqlite3
@@ -12,16 +12,19 @@ import os
 PARQUET_PATH = "data/set_pieces.parquet"
 DB_PATH      = "data/setpiece.db"
 
+# Mapeamento dos nomes do parquet para os nomes padronizados no banco
 TIPO_MAP = {
-    "Escanteio":     "escanteio",
-    "Falta Indireta":"falta_indireta",
-    "Falta Direta":  "falta_direta",
-    "Lateral":       "arremesso_lateral",
-    "Penalti":       "penalti",
+    "Escanteio":      "escanteio",
+    "Falta Indireta": "falta_indireta",
+    "Falta Direta":   "falta_direta",
+    "Lateral":        "arremesso_lateral",
+    "Penalti":        "penalti",
 }
 
 
 def criar_banco(conn):
+    # Cria as tabelas do banco caso ainda não existam
+    # O schema segue o modelo relacional do relatório com 5 entidades principais
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS competicoes (
         id_competicao  TEXT PRIMARY KEY,
@@ -33,14 +36,17 @@ def criar_banco(conn):
         nome     TEXT NOT NULL
     );
 
+    -- Cada partida pertence a uma competição e tem uma temporada associada
     CREATE TABLE IF NOT EXISTS partidas (
-        id_partida       TEXT PRIMARY KEY,
-        id_competicao    TEXT REFERENCES competicoes(id_competicao),
-        temporada        TEXT,
-        id_time_mandante TEXT,
+        id_partida        TEXT PRIMARY KEY,
+        id_competicao     TEXT REFERENCES competicoes(id_competicao),
+        temporada         TEXT,
+        id_time_mandante  TEXT,
         id_time_visitante TEXT
     );
 
+    -- Cada bola parada pertence a uma partida e a um time
+    -- Guarda coordenadas de origem e a zona do campo calculada
     CREATE TABLE IF NOT EXISTS bolas_paradas (
         id_bp         TEXT PRIMARY KEY,
         id_partida    TEXT REFERENCES partidas(id_partida),
@@ -54,6 +60,8 @@ def criar_banco(conn):
         zona_campo    TEXT
     );
 
+    -- Cada evento representa o resultado de uma bola parada:
+    -- quantas finalizações gerou, se teve gol, o xG total e onde foi o chute
     CREATE TABLE IF NOT EXISTS eventos (
         id_evento        TEXT PRIMARY KEY,
         id_bp            TEXT REFERENCES bolas_paradas(id_bp),
@@ -68,6 +76,8 @@ def criar_banco(conn):
 
 
 def zona_campo(x, y):
+    # Classifica a coordenada de origem em uma zona tática do campo
+    # O campo StatsBomb tem dimensões 120x80
     if x is None or pd.isna(x):
         return None
     if x < 40:
@@ -83,7 +93,8 @@ def zona_campo(x, y):
 
 
 def make_id(*parts):
-    """Gera ID estável a partir de campos concatenados."""
+    # Gera um ID único e estável a partir de campos concatenados
+    # Usamos MD5 só para encurtar o identificador
     key = "_".join(str(p) for p in parts)
     return hashlib.md5(key.encode()).hexdigest()[:16]
 
@@ -91,7 +102,7 @@ def make_id(*parts):
 def main():
     if not os.path.exists(PARQUET_PATH):
         print(f"ERRO: {PARQUET_PATH} nao encontrado.")
-        print("Baixe o arquivo set_pieces.parquet do repositorio do Carlos e coloque em data/")
+        print("Baixe o arquivo set_pieces.parquet do repositorio e coloque em data/")
         return
 
     print(f"Lendo {PARQUET_PATH}...")
@@ -101,9 +112,10 @@ def main():
     print(f"  Times: {df['team_name'].nunique()}")
     print(f"  Partidas: {df['match_id'].nunique()}")
 
-    # Mapear tipo
+    # Converte os nomes do parquet para o padrão do banco
     df['tipo'] = df['set_piece_type'].map(TIPO_MAP).fillna(df['set_piece_type'].str.lower())
 
+    # Remove o banco antigo antes de recriar para evitar conflitos de schema
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
         print(f"\nBanco anterior removido.")
@@ -112,7 +124,7 @@ def main():
     criar_banco(conn)
     print("Schema criado.\n")
 
-    # Competicoes
+    # Insere as competições únicas
     comps = df[['competition_name']].drop_duplicates()
     for _, row in comps.iterrows():
         cid = make_id(row['competition_name'])
@@ -121,7 +133,7 @@ def main():
     conn.commit()
     print(f"Competicoes inseridas: {len(comps)}")
 
-    # Times
+    # Insere os times únicos
     times = df[['team_name']].drop_duplicates()
     for _, row in times.iterrows():
         tid = make_id(row['team_name'])
@@ -130,7 +142,7 @@ def main():
     conn.commit()
     print(f"Times inseridos: {len(times)}")
 
-    # Partidas (match_id + competition + season é suficiente; times não estão no parquet por partida)
+    # Insere as partidas únicas vinculadas à competição correspondente
     partidas = df[['match_id','competition_name','season_name']].drop_duplicates('match_id')
     for _, row in partidas.iterrows():
         cid = make_id(row['competition_name'])
@@ -139,17 +151,18 @@ def main():
     conn.commit()
     print(f"Partidas inseridas: {len(partidas)}")
 
-    # Bolas paradas + eventos
+    # Insere bolas paradas e eventos em lotes de 1000 para melhor desempenho
     print(f"\nInserindo {len(df):,} bolas paradas e eventos...")
-    bp_batch  = []
-    ev_batch  = []
+    bp_batch = []
+    ev_batch = []
 
     for i, row in df.iterrows():
-        id_bp    = make_id(row['match_id'], row['team_name'], row['set_piece_type'],
-                           row['period'], row['minute'])
-        id_time  = make_id(row['team_name'])
-        zona     = zona_campo(row['origin_x'], row['origin_y'])
-        id_ev    = make_id(id_bp, 'evento')
+        # O ID da bola parada combina partida, time, tipo, período e minuto
+        id_bp   = make_id(row['match_id'], row['team_name'], row['set_piece_type'],
+                          row['period'], row['minute'])
+        id_time = make_id(row['team_name'])
+        zona    = zona_campo(row['origin_x'], row['origin_y'])
+        id_ev   = make_id(id_bp, 'evento')
 
         bp_batch.append((
             id_bp,
@@ -174,6 +187,7 @@ def main():
             float(row['shot_y']) if pd.notna(row['shot_y']) else None,
         ))
 
+        # Commit em lote para não travar o banco com uma transação gigante
         if len(bp_batch) >= 1000:
             conn.executemany("INSERT OR IGNORE INTO bolas_paradas VALUES (?,?,?,?,?,?,?,?,?,?)", bp_batch)
             conn.executemany("INSERT OR IGNORE INTO eventos VALUES (?,?,?,?,?,?,?)", ev_batch)
@@ -181,11 +195,13 @@ def main():
             bp_batch.clear()
             ev_batch.clear()
 
+    # Insere o restante
     if bp_batch:
         conn.executemany("INSERT OR IGNORE INTO bolas_paradas VALUES (?,?,?,?,?,?,?,?,?,?)", bp_batch)
         conn.executemany("INSERT OR IGNORE INTO eventos VALUES (?,?,?,?,?,?,?)", ev_batch)
         conn.commit()
 
+    # Exibe o resumo final do banco populado
     print("\n--- Banco populado ---")
     for tabela in ['competicoes','times','partidas','bolas_paradas','eventos']:
         count = conn.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]

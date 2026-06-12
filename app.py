@@ -1,3 +1,9 @@
+"""
+Dashboard principal do SetPiece Analytics.
+Interface construída com Streamlit para visualização
+das métricas e análises de bola parada.
+"""
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -19,55 +25,58 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Dicionário com os nomes
 TIPO_LABELS = {
-    "escanteio":        "Escanteio",
-    "falta_direta":     "Falta Direta",
-    "falta_indireta":   "Falta Indireta",
-    "arremesso_lateral":"Arremesso Lateral",
-    "penalti":          "Penalti",
+    "escanteio":         "Escanteio",
+    "falta_direta":      "Falta Direta",
+    "falta_indireta":    "Falta Indireta",
+    "arremesso_lateral": "Arremesso Lateral",
+    "penalti":           "Penalti",
 }
 
+# Cores associadas a cada tipo de bola parada nos gráficos
 COR_TIPO = {
-    "escanteio":        "#4e9af1",
-    "falta_direta":     "#f4a031",
-    "falta_indireta":   "#f4d03f",
-    "arremesso_lateral":"#4ecf7a",
-    "penalti":          "#e05c5c",
+    "escanteio":         "#4e9af1",
+    "falta_direta":      "#f4a031",
+    "falta_indireta":    "#f4d03f",
+    "arremesso_lateral": "#4ecf7a",
+    "penalti":           "#e05c5c",
 }
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+#  Sidebar com filtros 
 with st.sidebar:
     st.title("SetPiece Analytics")
     st.caption("StatsBomb Open Data")
     st.divider()
 
-    # Competicao
+    # Filtro de competição
     comps_df = lista_competicoes()
     comp_opcoes = {"Todas": None}
     comp_opcoes.update(dict(zip(comps_df['nome'], comps_df['id_competicao'])))
     comp_sel = st.selectbox("Competicao", list(comp_opcoes.keys()))
     comp_id = comp_opcoes[comp_sel]
 
-    # Temporada (depende da competicao)
+    # Temporadas disponíveis 
     temps_df = lista_temporadas(comp_id)
     temp_opcoes = {"Todas": None}
     temp_opcoes.update({t: t for t in temps_df['temporada']})
     temp_sel = st.selectbox("Temporada", list(temp_opcoes.keys()))
     temporada = temp_opcoes[temp_sel]
 
-    # Time
+    # Filtro de time
     times_df = lista_times()
     time_opcoes = {"Todos os times": None}
     time_opcoes.update(dict(zip(times_df['nome'], times_df['id_time'])))
     time_sel = st.selectbox("Time", list(time_opcoes.keys()))
     time_id = time_opcoes[time_sel]
 
-    # Tipo
+    # Filtro de tipo de bola parada
     tipo_opcoes = {"Todos": None} | {v: k for k, v in TIPO_LABELS.items()}
     tipo_sel = st.selectbox("Tipo de Bola Parada", list(tipo_opcoes.keys()))
     tipo_id = tipo_opcoes[tipo_sel]
 
     st.divider()
+    # Navegação entre páginas do dashboard
     pagina = st.radio("Pagina", [
         "Visao Geral",
         "Analise Espacial",
@@ -77,11 +86,13 @@ with st.sidebar:
         "Analise de Padroes",
     ])
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# Funções auxiliares 
+
 def fmt_pct(v):
     return f"{v:.1f}%" if pd.notna(v) else "-"
 
 def dark_fig(w=8, h=4):
+
     fig, ax = plt.subplots(figsize=(w, h))
     fig.patch.set_facecolor('#0e1117')
     ax.set_facecolor('#0e1117')
@@ -89,7 +100,7 @@ def dark_fig(w=8, h=4):
     ax.spines[:].set_visible(False)
     return fig, ax
 
-# ── Visao Geral ───────────────────────────────────────────────────────────────
+# Visao Geral 
 if pagina == "Visao Geral":
     st.header("Visao Geral - Metricas Ofensivas")
 
@@ -109,6 +120,7 @@ if pagina == "Visao Geral":
 
     st.divider()
 
+    # Tabela com todas as métricas por tipo
     tabela = df[['tipo_label','total_bp','finalizacoes','gols','TF','TC','xg_medio']].copy()
     tabela.columns = ['Tipo','Total BP','Finalizacoes','Gols','TF (%)','TC (%)','xG Medio']
     st.dataframe(tabela, use_container_width=True, hide_index=True)
@@ -126,6 +138,7 @@ if pagina == "Visao Geral":
         st.pyplot(fig); plt.close()
 
     with col2:
+        # Gráfico comparativo entre TF e TC para ver quais tipos geram mais perigo
         st.subheader("TF vs TC por Tipo")
         fig, ax = dark_fig(5, 3.5)
         x = np.arange(len(df))
@@ -138,6 +151,7 @@ if pagina == "Visao Geral":
         plt.tight_layout()
         st.pyplot(fig); plt.close()
 
+    # xG médio
     st.subheader("xG Medio por Tipo")
     fig, ax = dark_fig(8, 2.5)
     cores = [COR_TIPO.get(t, '#888') for t in df['tipo']]
@@ -146,7 +160,7 @@ if pagina == "Visao Geral":
     plt.tight_layout()
     st.pyplot(fig); plt.close()
 
-# ── Analise Espacial ──────────────────────────────────────────────────────────
+# Analise Espacial
 elif pagina == "Analise Espacial":
     st.header("Analise Espacial")
 
@@ -158,9 +172,11 @@ elif pagina == "Analise Espacial":
         if df_coords.empty:
             st.warning("Sem dados para os filtros selecionados.")
         else:
+            # mplsoccer desenha o campo automaticamente no padrão StatsBomb
             pitch = Pitch(pitch_type='statsbomb', pitch_color='#1a1a2e', line_color='#aaaaaa')
             fig, ax = pitch.draw(figsize=(10, 6))
             fig.patch.set_facecolor('#0e1117')
+            # bin_statistic conta quantos pontos caem em cada célula da grade
             bin_s = pitch.bin_statistic(df_coords['coord_x'], df_coords['coord_y'],
                                         statistic='count', bins=(25, 16))
             pitch.heatmap(bin_s, ax=ax, cmap='YlOrRd', edgecolors='#0e1117', alpha=0.85)
@@ -198,7 +214,7 @@ elif pagina == "Analise Espacial":
             st.pyplot(fig); plt.close()
             st.caption(f"{len(df_chutes):,} finalizacoes | {len(gols):,} gols")
 
-# ── Por Faixa de Minuto ───────────────────────────────────────────────────────
+# Por Faixa de Minuto
 elif pagina == "Por Faixa de Minuto":
     st.header("Distribuicao por Faixa de Minuto")
 
@@ -207,6 +223,7 @@ elif pagina == "Por Faixa de Minuto":
     col1, col2 = st.columns(2)
 
     with col1:
+        # Volume total
         st.subheader("Volume de Bolas Paradas")
         fig, ax = dark_fig(5, 3.5)
         ax.bar(df_min['faixa_minuto'], df_min['total_bp'], color='#4e9af1')
@@ -235,7 +252,7 @@ elif pagina == "Por Faixa de Minuto":
     tabela.columns = ['Faixa','Total BP','Gols','xG Medio']
     st.dataframe(tabela, use_container_width=True, hide_index=True)
 
-# ── Ranking de Times ──────────────────────────────────────────────────────────
+# Ranking de Times
 elif pagina == "Ranking de Times":
     st.header("Ranking de Times")
 
@@ -269,7 +286,7 @@ elif pagina == "Ranking de Times":
     tabela.columns = ['Time','Total BP','Finalizacoes','Gols','TF (%)','TC (%)','xG Medio']
     st.dataframe(tabela, use_container_width=True, hide_index=True)
 
-# ── Evolucao por Temporada ────────────────────────────────────────────────────
+# Evolucao por Temporada
 elif pagina == "Evolucao por Temporada":
     st.header("Evolucao por Temporada")
 
@@ -279,6 +296,7 @@ elif pagina == "Evolucao por Temporada":
     else:
         df_evo['tipo_label'] = df_evo['tipo'].map(TIPO_LABELS).fillna(df_evo['tipo'])
 
+        # Pivot para ter uma coluna por tipo, facilitando o gráfico de linhas
         df_vol = df_evo.pivot_table(index='temporada', columns='tipo_label',
                                     values='total_bp', aggfunc='sum').fillna(0)
         df_gols = df_evo.pivot_table(index='temporada', columns='tipo_label',
@@ -304,7 +322,7 @@ elif pagina == "Evolucao por Temporada":
         plt.tight_layout()
         st.pyplot(fig); plt.close()
 
-# ── Analise de Padroes ────────────────────────────────────────────────────────
+# Analise de Padroes (IRP)
 elif pagina == "Analise de Padroes":
     st.header("Analise de Padroes - IRP")
     st.caption("Identifica clusters de finalizacao geradas em bolas paradas, revelando jogadas ensaiadas recorrentes.")
@@ -312,6 +330,7 @@ elif pagina == "Analise de Padroes":
     if time_id is None:
         st.warning("Selecione um time no filtro para visualizar os padroes.")
     else:
+        # O usuário controla quantos padrões quer visualizar
         k = st.slider("Numero de padroes (clusters)", 2, 6, 4)
 
         try:
@@ -323,9 +342,10 @@ elif pagina == "Analise de Padroes":
         if df_pts.empty:
             st.warning("Sem finalizacoes registradas para esse time com os filtros atuais.")
         else:
+            # Cores fixas para cada cluster, até 6 padrões
             CORES_CLUSTER = ['#4e9af1','#f4a031','#4ecf7a','#e05c5c','#b07cf4','#f4d03f']
 
-            # Mapa de campo com clusters
+            # Mapa de campo
             pitch = VerticalPitch(pitch_type='statsbomb', half=True,
                                   pitch_color='#1a1a2e', line_color='#aaaaaa')
             fig, ax = pitch.draw(figsize=(7, 8))
@@ -334,9 +354,10 @@ elif pagina == "Analise de Padroes":
             for cl in sorted(df_pts['cluster'].unique()):
                 sub = df_pts[df_pts['cluster'] == cl]
                 cor = CORES_CLUSTER[cl % len(CORES_CLUSTER)]
-                gols_sub = sub[sub['goals_scored'] == 1]
+                gols_sub   = sub[sub['goals_scored'] == 1]
                 outros_sub = sub[sub['goals_scored'] == 0]
 
+                # Finalizações sem gol como pontos, gols como estrelas
                 pitch.scatter(outros_sub['shot_x'], outros_sub['shot_y'], ax=ax,
                              s=60, color=cor, alpha=0.55, edgecolors='white', linewidths=0.3,
                              label=f"Padrao {cl+1}")
@@ -358,8 +379,9 @@ elif pagina == "Analise de Padroes":
             col1, col2 = st.columns(2)
 
             with col1:
+                # Volume de finalizações por padrão
                 fig, ax = dark_fig(5, 3.5)
-                cores = [CORES_CLUSTER[i % len(CORES_CLUSTER)] for i in resumo['cluster']]
+                cores  = [CORES_CLUSTER[i % len(CORES_CLUSTER)] for i in resumo['cluster']]
                 labels = [f"Padrao {i+1}" for i in resumo['cluster']]
                 bars = ax.bar(labels, resumo['finalizacoes'], color=cores)
                 ax.bar_label(bars, padding=3, color='white', fontsize=9)
@@ -377,6 +399,7 @@ elif pagina == "Analise de Padroes":
                 plt.tight_layout()
                 st.pyplot(fig); plt.close()
 
+            # Tabela com todos os dados do resumo
             tabela = resumo[['cluster','finalizacoes','gols','TC','xg_medio','pct_total']].copy()
             tabela['cluster'] = tabela['cluster'].apply(lambda x: f"Padrao {x+1}")
             tabela.columns = ['Padrao','Finalizacoes','Gols','TC (%)','xG Medio','% do Total']
