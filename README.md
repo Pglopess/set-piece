@@ -1,4 +1,4 @@
-# ⚽ SetPiece Analytics
+# SetPiece Analytics
 
 Dashboard interativo para análise de **bolas paradas no futebol**, construído com Python e Streamlit utilizando os dados abertos da StatsBomb.
 
