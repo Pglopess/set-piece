@@ -81,11 +81,19 @@ O app vai abrir automaticamente no navegador em `http://localhost:8501`.
 
 ```
 set-piece/
-├── app.py            # Interface principal (Streamlit)
-├── etl-statsbomb.py  # Extrai os dados do StatsBomb em um arquivo central
-├── etl.py            # Carregamento e transformação dos dados processados
-├── metrics.py        # Cálculo das métricas e queries
-├── requirements.txt  # Dependências do projeto
+├── data/                      # datasets tratados
+│   ├── la_liga/
+│   │   ├── 2017_2018.parquet
+│   │   └── 2018_2019.parquet
+│   ├── uefa_champions_league/
+│   │   └── 2015_2016.parquet
+│   ├── ...                     # uma pasta por competição
+│   └── set_pieces.parquet      # centralizado com todas as competições
+├── app.py                      # Interface principal (Streamlit)
+├── etl-statsbomb.py            # Extrai os dados do StatsBomb
+├── etl.py                      # Carregamento e transformação dos dados processados
+├── metrics.py                  # Cálculo das métricas e queries
+├── requirements.txt            # Dependências do projeto
 └── .gitignore
 ```
 
