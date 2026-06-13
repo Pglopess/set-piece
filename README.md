@@ -82,7 +82,8 @@ O app vai abrir automaticamente no navegador em `http://localhost:8501`.
 ```
 set-piece/
 ├── app.py            # Interface principal (Streamlit)
-├── etl.py            # Carregamento e transformação dos dados StatsBomb
+├── etl-statsbomb.py  # Extrai os dados do StatsBomb em um arquivo central
+├── etl.py            # Carregamento e transformação dos dados processados
 ├── metrics.py        # Cálculo das métricas e queries
 ├── requirements.txt  # Dependências do projeto
 └── .gitignore
@@ -104,3 +105,5 @@ No painel lateral do app é possível filtrar por:
 ## Dados
 
 Os dados são provenientes do [StatsBomb Open Data](https://github.com/statsbomb/open-data), acessados via biblioteca `statsbombpy`. Nenhum download manual é necessário.
+
+Para **reprocessamento** ou **atualização** dos dados é necessário rodar o notebook `etl-statsbomb.ipynb`. Ao processo demora em torno de 30min, porém ele é capaz de identificar competições/temporadas já processadas. Sendo assim, caso os diretórios de dados não sejam excluídos, o processamento irá apenas processar dados novos adicionados pela equipe da StatsBomb.
